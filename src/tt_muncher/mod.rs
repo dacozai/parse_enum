@@ -59,7 +59,7 @@ test_other_enum!{
 
 #[macro_export]
 macro_rules! second_example {
-    (@helpler #[derive(Debug)] $field:ident || $field_ty:ty) => {
+    (@helpler #[unsafe] $field:ident || $field_ty:ty) => {
         $crate::wrap::Wrap<Self, $field_ty, {$crate::wrap::macro_util::hash_field_name(stringify!($field))}>
     };
 
@@ -178,7 +178,7 @@ second_example!{
     pub enum SecondTest {
         A,
         B,
-        #[derive(Debug)]
+        #[unsafe]
         C(i32, String),
         D {
             a: isize,
