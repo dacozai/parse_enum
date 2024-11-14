@@ -9,12 +9,6 @@ impl<T> Wrap<T> {
 
 #[macro_export]
 macro_rules! x {
-    (@field #[unsafe] $field:ident: $field_ty:ty) => {
-        $crate::wrap::Wrap<Self, $field_ty, {$crate::wrap::macro_util::hash_field_name(stringify!($field))}>
-    };
-    (@field $_field:ident: $field_ty:ty) => {
-        $field_ty
-    };
 
     // rest is empty, terminate the recurse and output final forms
     {
@@ -35,7 +29,7 @@ macro_rules! x {
             ),*
         }
     };
-    // matches `#[my_marker]` attribute, high priority
+    // matches `#[unsafe]` attribute, high priority
     // attributes before `#[my_marker]` is saved in the `(@tmp ...)` group
     // save it to the output group and recurse
     {
@@ -47,9 +41,7 @@ macro_rules! x {
         )
         (
             (@tmp $(#[$before:meta])*)
-            ($(#[$struct_meta:meta])* $next_variant:ident {
-                $($(#[$field_attr:tt])? $field:ident: $field_ty:ty),* $(,)?
-            })
+            (#[unsafe] $(#[$after:meta])* $next_variant:ident $($next_fields:tt)*)
             $($rest:tt)*
         )
     } => {
@@ -59,41 +51,7 @@ macro_rules! x {
             $E
             (
                 $(($(#[$attr])* $variant $($fields)*))*
-                ($(#[$struct_meta])* $next_variant {
-                    $(
-                        $field: x!(@field $(#[$field_attr])? $field: $field_ty),
-                    )*
-                })
-            )
-            (
-                (@tmp)
-                $($rest)*
-            )
-        }
-    };
-    // matches `#[my_marker]` attribute, high priority
-    // attributes before `#[my_marker]` is saved in the `(@tmp ...)` group
-    // save it to the output group and recurse
-    {
-        $(#[$outer_attr:meta])*
-        $vis:vis
-        $E:ident
-        (
-            $(($(#[$attr:meta])* $variant:ident $($fields:tt)*))*
-        )
-        (
-            (@tmp $(#[$before:meta])*)
-            (#[my_marker] $(#[$after:meta])* $next_variant:ident $($next_fields:tt)*)
-            $($rest:tt)*
-        )
-    } => {
-        x! {
-            $(#[$outer_attr])*
-            $vis
-            $E
-            (
-                $(($(#[$attr])* $variant $($fields)*))*
-                ($(#[$before])* $(#[$after])* $next_variant (Wrap<$($next_fields)*>))
+                ($(#[$before])* $(#[$after])* $next_variant (Unsafe<Self, $($next_fields)*, {$crate::xxx::macro_util::hash_field_name(stringify!($next_variant))}>))
             )
             (
                 (@tmp)
@@ -199,20 +157,65 @@ macro_rules! xx {
 
 xx! {
     /// this is an outer doc comment
-    #[derive(Debug)]
     pub enum Test {
         A,
         /// this is an inner doc comment
-        #[my_marker]
+        #[unsafe]
         /// another doc comment
-        B (i32, i32),
+        B (i32, String),
         C,
+        D (i32, i32),
     }
 }
 
+
 pub fn test() {
-    let _a = Test::B(Wrap::new((1,2)));
+    let _a = Test::B(unsafe{ Unsafe::new((1,"abc".to_string())) });
     let _b = Test::A;
-    println!("{:#?}", _a);
-    println!("{:#?}", _b);
+    let _c = Test::D(0, 1);
+    // println!("{:#?}", _a);
+    // println!("{:#?}", _b);
+    // println!("{:#?}", _c);
+}
+
+
+use core::marker::PhantomData;
+
+pub struct Unsafe<O: ?Sized, F: ?Sized, const NAME_HASH: u128> {
+    _marker: PhantomData<O>,
+    field: F,
+}
+
+impl<O: ?Sized, F: Copy, const NAME_HASH: u128> Copy for Unsafe<O, F, { NAME_HASH }> {}
+impl<O: ?Sized, F: Copy, const NAME_HASH: u128> Clone for Unsafe<O, F, { NAME_HASH }> {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        Unsafe { _marker: PhantomData, field: self.field }
+    }
+}
+
+impl<O: ?Sized, F, const NAME_HASH: u128> Unsafe<O, F, { NAME_HASH }> {
+    #[inline(always)]
+    pub const unsafe fn new(field: F) -> Unsafe<O, F, { NAME_HASH }> {
+        Unsafe { _marker: PhantomData, field }
+    }
+}
+
+
+#[doc(hidden)]
+pub mod macro_util {
+    #[inline(always)]
+    #[must_use]
+    #[allow(clippy::as_conversions, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
+    pub const fn hash_field_name(field_name: &str) -> u128 {
+        let field_name = field_name.as_bytes();
+        let mut hash = 0u128;
+        let mut i = 0;
+        while i < field_name.len() {
+            const K: u128 = 0x517cc1b727220a95517cc1b727220a95;
+            hash = (hash.rotate_left(5) ^ (field_name[i] as u128)).wrapping_mul(K);
+            i += 1;
+        }
+        hash
+    }
 }
