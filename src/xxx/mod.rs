@@ -9,6 +9,12 @@ impl<T> Wrap<T> {
 
 #[macro_export]
 macro_rules! x {
+    (@field #[unsafe] $field:ident: $field_ty:ty) => {
+        $crate::Unsafe<Self, $field_ty, {$crate::macro_util::hash_field_name(stringify!($field))}>
+    };
+    (@field $_field:ident: $field_ty:ty) => {
+        $field_ty
+    };
 
     // rest is empty, terminate the recurse and output final forms
     {
@@ -29,6 +35,7 @@ macro_rules! x {
             ),*
         }
     };
+
     // matches `#[unsafe]` attribute, high priority
     // attributes before `#[my_marker]` is saved in the `(@tmp ...)` group
     // save it to the output group and recurse
