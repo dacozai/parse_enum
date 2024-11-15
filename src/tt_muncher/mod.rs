@@ -1,192 +1,172 @@
+#[derive(Debug)]
+pub struct Wrap<T>(pub T);
 
-// #[macro_export]
-// macro_rules! test_other_enum {
-//     // entry point
-//     (
-//         $( #[$meta:meta] )*
-//         $vis:vis enum $name:ident {
-//             $($tt:tt)*
-//         }
-//     ) => {
-//         $( #[$meta] )*
-//         $vis enum $name {
-//             test_other_enum!(@variant $($tt)*)
-//         }
-//     };
+impl<T> Wrap<T> {
+    pub fn new(input: T) -> Self {
+        Wrap(input)
+    }
+}
 
-//     // tuple variant
-//     (@variant $(#[$variant_meta:meta])? $variant:ident $variant_ty:ty $(, $($tt:tt)* )? ) => {
-//         $(#[$variant_meta:meta])? $variant $variant_ty
-//         $( enum_item_matcher!(@variant $( $tt )*) )?
-//     };
-//     // named variant
-//     (@variant $variant:ident {
-//         $(
-//             $( #[$field_meta:meta] )*
-//             $field_vis:vis $field_name:ident : $field_ty:ty
-//         ),* $(,)?
-//     } $(, $($tt:tt)* )? ) => {
-//         $variant {
-//             $(
-//                 $( #[$field_meta] )*
-//                 $field_name : $field_ty,
-//             )*
-//         }
-//         $( enum_item_matcher!(@variant $( $tt )*) )?
-//     };
-//     // unit variant
-//     (@variant $variant:ident $(, $($tt:tt)* )? ) => {
-//         $variant
-//         $( test_other_enum!(@variant $( $tt )*) )?
-//     };
-//     // trailing comma
-//     (@variant ,) => {};
-//     // base case
-//     (@variant) => {};
-// }
+#[macro_export]
+macro_rules! zz {
+    (@field #[unsafe] $field:ident: $field_ty:ty) => {
+        $crate::Unsafe<Self, $field_ty, {$crate::macro_util::hash_field_name(stringify!($field))}>
+    };
+    (@field $_field:ident: $field_ty:ty) => {
+        $field_ty
+    };
 
-// test_other_enum!{
-//     pub enum Test {
-//         A,
-//         B,
-//         C(i32, String),
-//         D {
-//             a: isize,
-//             b: String,
-//         }
-//     }
-// }
+    // rest is empty, terminate the recurse and output final forms
+    {
+        $(#[$outer_attr:meta])*
+        $vis:vis
+        $E:ident
+        (
+            $(($(#[$attr:meta])* $variant:ident $($fields:tt)*))*
+        )
+        (
+            (@tmp)
+        )
+    } => {
+        $(#[$outer_attr])*
+        $vis enum $E {
+            $(
+                $(#[$attr])* $variant $($fields)*
+            ),*
+        }
+    };
 
-// #[macro_export]
-// macro_rules! second_example {
-//     (@helpler #[unsafe] $field:ident || $field_ty:ty) => {
-//         $crate::wrap::Wrap<Self, $field_ty, {$crate::wrap::macro_util::hash_field_name(stringify!($field))}>
-//     };
+    // matches `#[unsafe]` attribute, high priority
+    // attributes before `#[my_marker]` is saved in the `(@tmp ...)` group
+    // save it to the output group and recurse
+    {
+        $(#[$outer_attr:meta])*
+        $vis:vis
+        $E:ident
+        (
+            $(($(#[$attr:meta])* $variant:ident $($fields:tt)*))*
+        )
+        (
+            (@tmp $(#[$before:meta])*)
+            (#[unsafe] $(#[$after:meta])* $next_variant:ident $($next_fields:tt)*)
+            $($rest:tt)*
+        )
+    } => {
+        zz! {
+            $(#[$outer_attr])*
+            $vis
+            $E
+            (
+                $(($(#[$attr])* $variant $($fields)*))*
+                ($(#[$before])* $(#[$after])* $next_variant (Wrap<$($next_fields)*>))
+            )
+            (
+                (@tmp)
+                $($rest)*
+            )
+        }
+    };
+    // capture (consume) a single attribute that is not `#[my_marker]`
+    // note the attributes after the first one must be repetition of `tt`s
+    {
+        $(#[$outer_attr:meta])*
+        $vis:vis
+        $E:ident
+        (
+            $(($(#[$attr:meta])* $variant:ident $($fields:tt)*))*
+        )
+        (
+            (@tmp $(#[$before:meta])*)
+            (#[$not_marker:meta] $(#[$($after:tt)*])* $next_variant:ident $($next_fields:tt)*)
+            $($rest:tt)*
+        )
+    } => {
+        zz! {
+            $(#[$outer_attr])*
+            $vis
+            $E
+            (
+                $(($(#[$attr])* $variant $($fields)*))*
+            )
+            (
+                (@tmp $(#[$before])* #[$not_marker])
+                ($(#[$($after)*])* $next_variant $($next_fields)*)
+                $($rest)*
+            )
+        }
+    };
+    // consumed all attributes for current variant, no match
+    // save it to the output group and recurse
+    {
+        $(#[$outer_attr:meta])*
+        $vis:vis
+        $E:ident
+        (
+            $(($(#[$attr:meta])* $variant:ident $($fields:tt)*))*
+        )
+        (
+            (@tmp $(#[$before:meta])*)
+            ($next_variant:ident $($next_fields:tt)*)
+            $($rest:tt)*
+        )
+    } => {
+        zz! {
+            $(#[$outer_attr])*
+            $vis
+            $E
+            (
+                $(($(#[$attr])* $variant $($fields)*))*
+                ($(#[$before])* $next_variant $($next_fields)*)
+            )
+            (
+                (@tmp)
+                $($rest)*
+            )
 
-//     // VariantName
-//     (
-//         @metadata {$vis:vis enum $name:ident}
-//         @attribute [$(#[$meta:meta])*]
-//         @variants [
-//             $($variants:tt)*
-//         ]
-//         @parsing
-//             $VariantName:ident
-//             $(, $($input:tt)*)?
-//     ) => (second_example! {
-//         @metadata {$vis enum $name}
-//         @attribute [$(#[$meta])*]
-//         @variants [
-//             $($variants)*
-//             {
-//                 $VariantName
-//             }
-//         ]
-//         @parsing
-//             $( $($input)* )?
-//     });
+        }
+    };
+    
+}
 
-//     // VariantName(...)
-//     (
-//         @metadata {$vis:vis enum $name:ident}
-//         @attribute [$(#[$meta:meta])*]
-//         @variants [
-//             $($variants:tt)*
-//         ]
-//         @parsing
-//             $(#[$variant_meta:meta])?
-//             $VariantName:ident $variant_ty:ty
-//             $(, $($input:tt)*)?
-//     ) => (second_example! {
-//         @metadata {$vis enum $name}
-//         @attribute [$(#[$meta])*]
-//         @variants [
-//             $($variants)*
-//             {
-//                 $VariantName second_example!(@helpler $(#[$variant_meta])? $VariantName || $variant_ty)
-//             }
-//         ]
-//         @parsing
-//             $( $($input)* )?
-//     });
+#[macro_export]
+macro_rules! zzz {
+    {
+        $(#[$outer_attr:meta])*
+        $vis:vis enum $E:ident {
+            $(
+                $(#[$($attr:tt)*])* 
+                $variant:ident 
+                $(($($fields:tt)*))?
+            ),* $(,)?
+        }
+    } => {
+        zz! {
+            $(#[$outer_attr])*
+            $vis $E
+            ()
+            (
+                (@tmp)
+                $(
+                    (
+                        $(#[$($attr)*])* 
+                        $variant 
+                        $(($($fields)*))?
+                    )
+                )*
+            )
+        }
+    }
+}
 
-//     // VariantName { ... }
-//     (
-//         @metadata {$vis:vis enum $name:ident}
-//         @attribute [$(#[$meta:meta])*]
-//         @variants [
-//             $($variants:tt)*
-//         ]
-//         @parsing
-//             $VariantName:ident { $($tt:tt)* }
-//             $(, $($input:tt)*)?
-//     ) => (second_example! {
-//         @metadata {$vis enum $name}
-//         @attribute [$(#[$meta])*]
-//         @variants [
-//             $($variants)*
-//             {
-//                 $VariantName { $($tt)* }
-//             }
-//         ]
-//         @parsing
-//             $( $($input)* )?
-//     });
-
-//     // Done parsing, time to generate code:
-//     (
-//         @metadata {$vis:vis enum $name:ident}
-//         @attribute [$(#[$meta:meta])*]
-//         @variants [
-//             $(
-//                 {
-//                     $VariantName:ident $($variant_assoc:tt)?
-//                 }
-//             )*
-//         ]
-//         @parsing
-//             // Nothing left to parse
-//     ) => (
-//         $(#[$meta])*
-//         $vis enum $name {
-//             $(
-//                 $VariantName $(
-//                     $variant_assoc
-//                 )? ,
-//             )*
-//         }
-//     );
-
-//     // == ENTRY POINT ==
-//     (
-//         $(#[$meta:meta])*
-//         $vis:vis enum $name:ident {
-//             $($input:tt)*
-//         }
-//     ) => (second_example! {
-//         @metadata {$vis enum $name}
-//         @attribute [$(#[$meta])*]
-//         // a sequence of brace-enclosed variants
-//         @variants []
-//         // remaining tokens to parse
-//         @parsing
-//             $($input)*
-//     });
-// }
-
-// second_example!{
-//     pub enum SecondTest {
-//         A,
-//         B,
-//         #[unsafe]
-//         C(i32, String),
-//         D {
-//             a: isize,
-//             b: String,
-//         }
-//     }
-// }
-
-// pub fn test() {
-//     let _a = SecondTest::D { a: 0, b: "s".to_string() };
-// }
+zzz! {
+    /// this is an outer doc comment
+    pub enum Test {
+        A,
+        /// this is an inner doc comment
+        #[unsafe]
+        /// another doc comment
+        B (i32, String),
+        C,
+        D (i32, i32),
+    }
+}

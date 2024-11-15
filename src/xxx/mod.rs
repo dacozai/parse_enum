@@ -136,9 +136,8 @@ macro_rules! xx {
             $(
                 $(#[$($attr:tt)*])* 
                 $variant:ident 
-                $(
-                    ($($fields:tt)*)
-                )?
+                $(($($fields:tt)*))?
+                $({$($struct_fields:tt)*})?
             ),* $(,)?
         }
     } => {
@@ -152,9 +151,8 @@ macro_rules! xx {
                     (
                         $(#[$($attr)*])* 
                         $variant 
-                        $(
-                            ($($fields)*)
-                        )?
+                        $(($($fields)*))?
+                        $({$($struct_fields)*})?
                     )
                 )*
             )
@@ -172,6 +170,10 @@ xx! {
         B (i32, String),
         C,
         D (i32, i32),
+        E {
+            a: i32,
+            b: String,
+        }
     }
 }
 
